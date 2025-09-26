@@ -1,0 +1,50 @@
+name: Kernel Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y bc build-essential git wget curl \
+          libncurses5-dev libssl-dev flex bison zip unzip python3 ccache
+
+      - name: Clone Toolchain
+        run: |
+          git clone --depth=1 https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 clang-r530567
+
+      - name: Build Kernel
+        run: |
+          export ARCH=arm64
+          export KBUILD_BUILD_USER=aryan
+          export KBUILD_BUILD_HOST=celeste
+          export PATH="$PWD/clang-r530567/bin:$PATH"
+
+          make O=out sweet_defconfig
+          make -j$(nproc) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+      - name: Package Kernel
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3
+          cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          cp out/arch/arm64/boot/dtb.img AnyKernel3/ || true
+          cp out/arch/arm64/boot/dtbo.img AnyKernel3/ || true
+          cd AnyKernel3
+          zip -r9 ../sweet-kernel.zip *
+          cd ..
+
+      - name: Upload Kernel
+        uses: actions/upload-artifact@v3
+        with:
+          name: sweet-kernel
+          path: sweet-kernel.zip
